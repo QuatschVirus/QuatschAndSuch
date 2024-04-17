@@ -2,10 +2,10 @@
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace QuatschAndSuch
 {
@@ -25,15 +25,15 @@ namespace QuatschAndSuch
         }
     }
 
+    public class MissingAtttributeException : Exception { }
+
     public static class ByteSerializer
     {
-        public class MissingSerializableAtttributeException : Exception { }
-
         public static byte[] Serialize<T>(T source)
         {
             if (typeof(T).IsClass)
             {
-                if (Attribute.GetCustomAttribute(typeof(T), typeof(ByteSerializable)) is not ByteSerializable b) throw new MissingSerializableAtttributeException();
+                if (Attribute.GetCustomAttribute(typeof(T), typeof(ByteSerializable)) is not ByteSerializable b) throw new MissingAtttributeException();
 
                 List<byte> data = new();
                 foreach (string fieldName in b.SerializedFields)
@@ -77,7 +77,7 @@ namespace QuatschAndSuch
             bytesRead = 0;
             if (typeof(T).IsClass)
             {
-                if (Attribute.GetCustomAttribute(typeof(T), typeof(ByteSerializable)) is not ByteSerializable b) throw new MissingSerializableAtttributeException();
+                if (Attribute.GetCustomAttribute(typeof(T), typeof(ByteSerializable)) is not ByteSerializable b) throw new MissingAtttributeException();
                 T obj = default;
 
                 List<byte> data = new(bytes);
@@ -155,42 +155,75 @@ namespace QuatschAndSuch
         public readonly byte[] key;
     }
 
-    public abstract class Packet
+    public class Packet
     {
-        public static readonly Dictionary<byte, Func<byte[], Packet>> creators = new()
-        {
-            { 0, b => new BasicPacket(b.First(), Encoding.Unicode.GetString(b, 5, BitConverter.ToInt32(b, 1))) },
-            { 1, b => new GreetPacket(ByteSerializer.Deserialize<ClientInfo>(b, 0, out var _)) },
-            { 2, b => new ChannelRequestPacket(ByteSerializer.Deserialize<ClientInfo>(b, 0, out var i), Encoding.Unicode.GetString(b, i + 4, BitConverter.ToInt32(b, i))) }
-        };
+        public static readonly Dictionary<byte, Func<byte[], IPacket>> creators = new();
+        public static readonly Dictionary<Type, byte> ids = new();
 
-        public abstract byte Id { get; }
-
-        protected virtual byte[] Serialize(params byte[] data)
+        public static IPacket Deserialize(byte[] bytes)
         {
-            return new byte[] { Id }.Concat(data).ToArray();
+            return creators[bytes.First()](bytes.Skip(1).ToArray());
         }
 
-        public abstract byte[] Serialize();
-
-        public static Packet Deserialize(byte[] data)
+        public static byte[] Finish<T>(params byte[] bytes) where T : IPacket
         {
-            return creators[data.First()](data.Skip(1).ToArray());
+            return new byte[] { ids[typeof(T)] }.Concat(bytes).ToArray();
+        }
+
+        public static byte[] Serialize<T>(T packet) where T : IPacket
+        {
+            return Finish<T>(packet.Serialize());
+        }
+
+        public static void Register<T>(byte id, Func<byte[], IPacket> creator) where T : IPacket
+        {
+            ids.Add(typeof(T), id);
+            creators.Add(id, creator);
+        }
+
+        static Packet()
+        {
+            var _ =
+                from a in AppDomain.CurrentDomain.GetAssemblies().AsParallel()
+                from t in a.GetTypes()
+                where t.IsSubclassOf(typeof(IPacket)) && t.IsSubclassOf(typeof(ICreateablePacket))
+                select t.GetMethod(nameof(ICreateablePacket.Register)).Invoke(null, null);
         }
     }
 
-    public class BasicPacket : Packet
+    public interface IPacket
     {
-        public override byte Id => 0;
+        public byte[] Serialize();
+    }
+
+    public interface ICreateablePacket
+    {
+        public static abstract void Register();
+    }
+
+    public class BasicPacket : IPacket, ICreateablePacket
+    {
         public readonly BasicValue value;
         public readonly string reason;
 
         public enum BasicValue
         {
-            Acknowledge, // General acknowledgement / positive answer
-            NonAcknowledge, // General non-acknowledgement / negative answer
-            Repeat, // Repeat the last packet
-            Close // Close the connection
+            /// <summary>
+            /// General acknowledgement / positive answer
+            /// </summary>
+            Acknowledge,
+            /// <summary>
+            /// General non-acknowledgement / negative answer
+            /// </summary>
+            NonAcknowledge,
+            /// <summary>
+            /// Repeat the last packet
+            /// </summary>
+            Repeat,
+            /// <summary>
+            /// Close the connection
+            /// </summary>
+            Close
         }
 
         public BasicPacket(byte value, string reason)
@@ -205,16 +238,19 @@ namespace QuatschAndSuch
             this.reason = reason;
         }
 
-        public override byte[] Serialize()
+        public BasicPacket(byte[] serial) : this(serial.First(), Encoding.Unicode.GetString(serial, 5, BitConverter.ToInt32(serial, 1))) { }
+
+        public byte[] Serialize()
         {
             byte[] bytes = Encoding.Unicode.GetBytes(reason);
-            return base.Serialize( new byte[] { (byte)value }.Concat(BitConverter.GetBytes(bytes.Length)).Concat(bytes).ToArray());
+            return new byte[] { (byte)value }.Concat(BitConverter.GetBytes(bytes.Length)).Concat(bytes).ToArray());
         }
+
+        public static void Register() => Packet.Register<BasicPacket>(0, b => new BasicPacket(b));
     }
 
-    public class GreetPacket : Packet
+    public class GreetPacket : IPacket, ICreateablePacket
     {
-        public override byte Id => 1;
         public readonly ClientInfo clientInfo;
 
         public GreetPacket(ClientInfo clientInfo)
@@ -222,10 +258,12 @@ namespace QuatschAndSuch
             this.clientInfo = clientInfo;
         }
 
-        public override byte[] Serialize()
+        public byte[] Serialize()
         {
-            return base.Serialize(ByteSerializer.Serialize(clientInfo));
+            return ByteSerializer.Serialize(clientInfo);
         }
+
+        public static void Register() => Packet.Register<GreetPacket>(1, b => new GreetPacket(ByteSerializer.Deserialize<ClientInfo>(b, 0, out var _)));
     }
 
     /// <summary>
