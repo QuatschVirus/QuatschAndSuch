@@ -2,10 +2,7 @@
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
-using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using static System.Runtime.InteropServices.JavaScript.JSType;
@@ -41,37 +38,7 @@ namespace QuatschAndSuch
                 List<byte> data = new();
                 foreach (string fieldName in b.SerializedFields)
                 {
-                    switch (typeof(T).GetField(fieldName).GetValue(source))
-                    {
-                        case int i:
-                            {
-                                data.AddRange(BitConverter.GetBytes(i)); break;
-                            }
-                        case long l:
-                            {
-                                data.AddRange(BitConverter.GetBytes(l)); break;
-                            }
-                        case string s:
-                            {
-                                byte[] bytes = Encoding.Unicode.GetBytes(s);
-                                data.AddRange(BitConverter.GetBytes(bytes.Length));
-                                data.AddRange(bytes);
-                                break;
-                            }
-                        case byte[] bytes:
-                            {
-                                data.AddRange(BitConverter.GetBytes(bytes.Length));
-                                data.AddRange(bytes);
-                                break;
-                            }
-                        case var obj:
-                            {
-                                byte[] bytes = Serialize(obj);
-                                data.AddRange(BitConverter.GetBytes(bytes.Length));
-                                data.AddRange(bytes);
-                                break;
-                            }
-                    }
+                    data.AddRange(Serialize(typeof(T).GetField(fieldName).GetValue(source)));
                 }
 
                 return data.ToArray();
@@ -81,7 +48,7 @@ namespace QuatschAndSuch
                 {
                     case int i:
                         {
-                            return (BitConverter.GetBytes(i));
+                            return BitConverter.GetBytes(i);
                         }
                     case long l:
                         {
@@ -96,110 +63,70 @@ namespace QuatschAndSuch
                         {
                             return BitConverter.GetBytes(bytes.Length).Concat(bytes).ToArray();
                         }
+                    case var obj:
+                        {
+                            byte[] bytes = Serialize(obj);
+                            return BitConverter.GetBytes(bytes.Length).Concat(bytes).ToArray();
+                        }
                 }
             }
         }
 
-        public static T Deserialize<T>(byte[] bytes) where T : new()
+        public static T Deserialize<T>(byte[] bytes, int offset, out int bytesRead)
         {
+            bytesRead = 0;
             if (typeof(T).IsClass)
             {
                 if (Attribute.GetCustomAttribute(typeof(T), typeof(ByteSerializable)) is not ByteSerializable b) throw new MissingSerializableAtttributeException();
-                T obj = new();
+                T obj = default;
 
                 List<byte> data = new(bytes);
+                MethodInfo method = typeof(ByteSerializer).GetMethod(nameof(Deserialize));
 
                 foreach (string fieldName in b.SerializedFields)
                 {
                     FieldInfo f = typeof(T).GetField(fieldName);
-                    switch (f.GetValue(obj))
-                    {
-                        case int _:
-                            {
-                                f.SetValue(obj, BitConverter.ToInt32(data.ToArray()));
-                                data.RemoveRange(0, 4);
-                                break;
-                            }
-                        case long _:
-                            {
-                                f.SetValue(obj, BitConverter.ToInt64(data.ToArray()));
-                                data.RemoveRange(0, 8);
-                                break;
-                            }
-                        case string _:
-                            {
-                                int len = BitConverter.ToInt32(data.ToArray());
-                                data.RemoveRange(0, 4);
-
-                                f.SetValue(obj, Encoding.Unicode.GetString(data.Take(len).ToArray()));
-                                data.RemoveRange(0, len);
-                                break;
-                            }
-                        case byte[] _:
-                            {
-                                int len = BitConverter.ToInt32(data.ToArray());
-                                data.RemoveRange(0, 4);
-
-                                f.SetValue(obj, data.Take(len).ToArray());
-                                data.RemoveRange(0, len);
-                                break;
-                            }
-                        case var other:
-                            {
-                                int len = BitConverter.ToInt32(data.ToArray());
-                                data.RemoveRange(0, 4);
-
-                                f.SetValue(obj, typeof(ByteSerializer).GetMethod(nameof(Deserialize)).MakeGenericMethod(other.GetType()).Invoke(null, new object[] { data.Take(len).ToArray() }));
-                                data.RemoveRange(0, len);
-                                break;
-                            }
-                    }
+                    object[] parameters = new object[] { data.ToArray(), 0, null };
+                    f.SetValue(obj, method.MakeGenericMethod(f.FieldType).Invoke(null, parameters));
+                    bytesRead += (int)parameters[2];
                 }
 
                 return obj;
             } else
             {
-                switch (new T())
+                switch (typeof(T))
                 {
-                    case int _:
+                    case Type t when t == typeof(int):
                         {
-                            f.SetValue(obj, BitConverter.ToInt32(data.ToArray()));
-                            data.RemoveRange(0, 4);
-                            break;
+                            bytesRead = 4;
+                            return (T)(object)BitConverter.ToInt32(bytes);
                         }
-                    case long _:
+                    case Type t when t == typeof(long):
                         {
-                            f.SetValue(obj, BitConverter.ToInt64(data.ToArray()));
-                            data.RemoveRange(0, 8);
-                            break;
+                            bytesRead = 8;
+                            return (T)(object)BitConverter.ToInt64(bytes);
                         }
-                    case string _:
+                    case Type t when t == typeof(string):
                         {
-                            int len = BitConverter.ToInt32(data.ToArray());
-                            data.RemoveRange(0, 4);
-
-                            f.SetValue(obj, Encoding.Unicode.GetString(data.Take(len).ToArray()));
-                            data.RemoveRange(0, len);
-                            break;
+                            int len = BitConverter.ToInt32(bytes);
+                            bytesRead = 4 + len;
+                            return (T)(object)Encoding.Unicode.GetString(bytes.Skip(4).Take(len).ToArray());
                         }
-                    case byte[] _:
+                    case Type t when t == typeof(byte[]):
                         {
-                            int len = BitConverter.ToInt32(data.ToArray());
-                            data.RemoveRange(0, 4);
-
-                            f.SetValue(obj, data.Take(len).ToArray());
-                            data.RemoveRange(0, len);
-                            break;
+                            int len = BitConverter.ToInt32(bytes);
+                            bytesRead = 4 + len;
+                            return (T)(object)bytes.Skip(4).Take(len).ToArray();
                         }
-                    case var other:
+                    case Type t:
                         {
-                            int len = BitConverter.ToInt32(data.ToArray());
-                            data.RemoveRange(0, 4);
-
-                            f.SetValue(obj, typeof(ByteSerializer).GetMethod(nameof(Deserialize)).MakeGenericMethod(other.GetType()).Invoke(null, new object[] { data.Take(len).ToArray() }));
-                            data.RemoveRange(0, len);
-                            break;
+                            int len = BitConverter.ToInt32(bytes);
+                            T r = Deserialize<T>(bytes.Skip(4).Take(len).ToArray(), 0, out bytesRead);
+                            bytesRead += 4;
+                            return r;
                         }
+                    default: return default;
+                        
                 }
             }
         }
@@ -232,8 +159,9 @@ namespace QuatschAndSuch
     {
         public static readonly Dictionary<byte, Func<byte[], Packet>> creators = new()
         {
-            { 0, b => new BasicPacket(b.First(), b.Skip(1).ToArray()) },
-            { 1, b => new GreetPacket(ByteSerializer.Deserialize<ClientInfo>(b)) }
+            { 0, b => new BasicPacket(b.First(), Encoding.Unicode.GetString(b, 5, BitConverter.ToInt32(b, 1))) },
+            { 1, b => new GreetPacket(ByteSerializer.Deserialize<ClientInfo>(b, 0, out var _)) },
+            { 2, b => new ChannelRequestPacket(ByteSerializer.Deserialize<ClientInfo>(b, 0, out var i), Encoding.Unicode.GetString(b, i + 4, BitConverter.ToInt32(b, i))) }
         };
 
         public abstract byte Id { get; }
@@ -244,6 +172,11 @@ namespace QuatschAndSuch
         }
 
         public abstract byte[] Serialize();
+
+        public static Packet Deserialize(byte[] data)
+        {
+            return creators[data.First()](data.Skip(1).ToArray());
+        }
     }
 
     public class BasicPacket : Packet
@@ -254,7 +187,8 @@ namespace QuatschAndSuch
 
         public enum BasicValue
         {
-            Acknowledge, // General acknowledgement 
+            Acknowledge, // General acknowledgement / positive answer
+            NonAcknowledge, // General non-acknowledgement / negative answer
             Repeat, // Repeat the last packet
             Close // Close the connection
         }
@@ -273,7 +207,8 @@ namespace QuatschAndSuch
 
         public override byte[] Serialize()
         {
-            return base.Serialize( new byte[] { (byte)value }.Concat(Encoding.Unicode.GetBytes(reason)).ToArray());
+            byte[] bytes = Encoding.Unicode.GetBytes(reason);
+            return base.Serialize( new byte[] { (byte)value }.Concat(BitConverter.GetBytes(bytes.Length)).Concat(bytes).ToArray());
         }
     }
 
