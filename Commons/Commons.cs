@@ -108,7 +108,11 @@ namespace QuatschAndSuch
             /// <summary>
             /// Close the connection
             /// </summary>
-            Close
+            Close,
+            /// <summary>
+            /// Requesting the last saved client info for a user with the handle in the <see cref="reason"><c>reason</c></see> field
+            /// </summary>
+            UpdatedClientInfo
         }
 
         public BasicPacket(byte value, string reason)
@@ -217,6 +221,18 @@ namespace QuatschAndSuch
             RandomNumberGenerator.Fill(salt);
             using Rfc2898DeriveBytes rfc = new(data, salt, keySavingParams.IterationCount, keySavingParams.HashAlgorithm);
             return (salt, rfc.GetBytes(secureHashSize));
+        }
+
+        /// <summary>
+        /// Gets the public key out of the private key
+        /// </summary>
+        /// <param name="key">The private key</param>
+        /// <returns>The correspondng public key</returns>
+        public static byte[] Extract(byte[] key)
+        {
+            using RSACryptoServiceProvider rsa = new();
+            rsa.ImportCspBlob(key);
+            return rsa.ExportCspBlob(false);
         }
 
         /// <summary>
