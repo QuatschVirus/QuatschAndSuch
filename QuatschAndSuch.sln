@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.7.34024.191
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Commons", "Commons\Commons.csproj", "{3E3403CC-4FEA-40DE-AE97-4AD3F23952A8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Commons", "Commons\Commons.csproj", "{3E3403CC-4FEA-40DE-AE97-4AD3F23952A8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Slider-Client", "Slider\Slider-Client.csproj", "{DBF4073D-47A7-4A72-BC3A-D31E9F415FD2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Slider-Client", "Slider\Slider-Client.csproj", "{DBF4073D-47A7-4A72-BC3A-D31E9F415FD2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DevTools", "DevTools\DevTools.csproj", "{A0E64510-7E19-4D18-B2D5-825B20BEACC3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{DBF4073D-47A7-4A72-BC3A-D31E9F415FD2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DBF4073D-47A7-4A72-BC3A-D31E9F415FD2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DBF4073D-47A7-4A72-BC3A-D31E9F415FD2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A0E64510-7E19-4D18-B2D5-825B20BEACC3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A0E64510-7E19-4D18-B2D5-825B20BEACC3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A0E64510-7E19-4D18-B2D5-825B20BEACC3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A0E64510-7E19-4D18-B2D5-825B20BEACC3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
