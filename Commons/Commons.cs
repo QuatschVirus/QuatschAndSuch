@@ -53,11 +53,18 @@ namespace QuatschAndSuch
 
     public class Packet
     {
-        public static readonly Dictionary<byte, Func<string, Packet>> creators = new();
-        public static readonly Dictionary<Type, byte> ids = new();
+        public static readonly Dictionary<byte, Type> typeResolve = new();
+        public static readonly Dictionary<Type, byte> idResolve = new();
 
         public static Packet Deserialize(string data)
         {
+            (byte id, string content) = JsonSerializer.Deserialize<(byte, string)>(data);
+            return (Packet)JsonSerializer.Deserialize(content, typeResolve[id]);
+        }
+
+        public static string Serialize(Packet packet)
+        {
+            return JsonSerializer.Serialize((idResolve[packet.GetType()], JsonSerializer.Serialize(packet, packet.GetType())));
         }
 
         static Packet()
@@ -72,13 +79,13 @@ namespace QuatschAndSuch
 
             packets.ForAll(a =>
             {
-                ids.Add(a.t, a.id);
-                creators.Add(a.id, s => (Packet)JsonSerializer.Deserialize(s, a.t));
+                idResolve.Add(a.t, a.id);
+                typeResolve.Add(a.id, a.t);
             });
         }
     }
 
-    [Packet(0)]
+    [Serializable, Packet(0)]
     public class BasicPacket : Packet
     {
         public readonly BasicValue value;
@@ -117,7 +124,8 @@ namespace QuatschAndSuch
         }
     }
 
-    public class GreetPacket : IPacket, ICreateablePacket
+    [Serializable, Packet(1)]
+    public class GreetPacket : Packet
     {
         public readonly ClientInfo clientInfo;
 
@@ -125,13 +133,6 @@ namespace QuatschAndSuch
         {
             this.clientInfo = clientInfo;
         }
-
-        public byte[] Serialize()
-        {
-            return Serializer.Serialize(clientInfo);
-        }
-
-        public static void Register() => Packet.Register<GreetPacket>(1, b => new GreetPacket(Serializer.Deserialize<ClientInfo>(b, 0, out var _)));
     }
 
     /// <summary>
@@ -142,6 +143,8 @@ namespace QuatschAndSuch
         // Settings
         const int saltSize = 32;
         const int secureHashSize = 256;
+        const int iVSize = 64;
+        const int SyncBlockSize = 256;
         const bool fOAEL = false;
         static readonly HashAlgorithm hashAlgorithm = SHA256.Create();
         static readonly PbeParameters keySavingParams = new(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 1000);
@@ -187,7 +190,7 @@ namespace QuatschAndSuch
         /// Generates new private and public keys using RSA
         /// </summary>
         /// <returns>A tuple containing the CSP blobs for the private and public key in that order</returns>
-        public static (byte[], byte[]) GenerateKeys()
+        public static (byte[], byte[]) GenerateKeyPair()
         {
             using RSACryptoServiceProvider rsa = new();
             return (rsa.ExportCspBlob(true), rsa.ExportCspBlob(false));
@@ -222,13 +225,13 @@ namespace QuatschAndSuch
         /// <param name="path">The path to saves this information to</param>
         /// <param name="key">The CSP blob for the private key to save</param>
         /// <param name="password">The password to use for PKCS#8. Make sure to handle this securely!</param>
-        public static void SaveKey(string path, byte[] key, byte[] password)
+        public static void SaveKey(string path, byte[] key, string password)
         {
             using RSACryptoServiceProvider rsa = new();
             rsa.ImportCspBlob(key);
             byte[] keyData = rsa.ExportEncryptedPkcs8PrivateKey(password, keySavingParams);
             int keyLen = keyData.Length;
-            (byte[] salt, byte[] hash) = SecuredHash(password);
+            (byte[] salt, byte[] hash) = SecuredHash(Encoding.Unicode.GetBytes(password));
             File.WriteAllBytes(path, BitConverter.GetBytes(keyLen).Concat(keyData).Concat(salt).Concat(hash).ToArray());
         }
 
@@ -239,21 +242,9 @@ namespace QuatschAndSuch
         /// <param name="password">The password to use for PKCS#8. Make sure to handle this securely!</param>
         /// <returns>CSP blob for the decoded private key</returns>
         /// <exception cref="PasswordHashMismatchException"Thrown if the password does not fit the stored password information</exception>
-        public static byte[] RetrieveKey(string path, byte[] password)
+        public static byte[] RetrieveKey(string path, string password)
         {
-            byte[] data = File.ReadAllBytes(path);
-            byte[] keyData = new byte[BitConverter.ToInt32(data)];
-            Array.Copy(data, 4, keyData, 0, keyData.Length);
-            byte[] salt = new byte[saltSize];
-            Array.Copy(data, keyData.Length + 4, salt, 0, salt.Length);
-            byte[] hashData = new byte[secureHashSize];
-            Array.Copy(data, keyData.Length + salt.Length + 4, hashData, 0, hashData.Length);
-
-            byte[] hash = SecuredHash(password, salt);
-            if (!hashData.Equals(hash)) throw new PasswordHashMismatchException();
-            using RSACryptoServiceProvider rsa = new();
-            rsa.ImportEncryptedPkcs8PrivateKey(password, keyData, out var _);
-            return rsa.ExportCspBlob(true);
+            return RetrieveKey(path, 0, password, out var _);
         }
 
         /// <summary>
@@ -265,7 +256,7 @@ namespace QuatschAndSuch
         /// <param name="bytesRead">How many bytes wereread for the key information</param>
         /// <returns>CSP blob for the decoded private key</returns>
         /// <exception cref="PasswordHashMismatchException"Thrown if the password does not fit the stored password information</exception>
-        public static byte[] RetrieveKey(string path, int offset, byte[] password, out int bytesRead)
+        public static byte[] RetrieveKey(string path, int offset, string password, out int bytesRead)
         {
             byte[] data = File.ReadAllBytes(path);
             byte[] keyData = new byte[BitConverter.ToInt32(data, offset)];
@@ -275,7 +266,7 @@ namespace QuatschAndSuch
             byte[] hashData = new byte[secureHashSize];
             Array.Copy(data, keyData.Length + salt.Length + 4 + offset, hashData, 0, hashData.Length);
 
-            byte[] hash = SecuredHash(password, salt);
+            byte[] hash = SecuredHash(Encoding.Unicode.GetBytes(password), salt);
             if (!hashData.Equals(hash)) throw new PasswordHashMismatchException();
             bytesRead = keyData.Length + salt.Length + hashData.Length + 4;
             using RSACryptoServiceProvider rsa = new();
@@ -307,22 +298,6 @@ namespace QuatschAndSuch
         }
 
         /// <summary>
-        /// Decrypts an encryption packet, and checks its hash to make sure it arrived correctly. Throws a <see cref="DecryptionHashMismatchException"><c>DecryptionHashMismatchException</c></see> when the sent hash and hash of the decrypted string are not the same
-        /// </summary>
-        /// <param name="buffer">The buffer containing the encryption packet. See <c cref="Decrypt(byte[], byte[])">Decrypt</c> for more info</param>
-        /// <param name="offset">The index in the buffer to begin and try to read the packet from</param>
-        /// <param name="key">The private key of the recipient</param>
-        /// <param name="packetLength">The length of the extracted packet in bytes</param>
-        /// <returns>The decrypted and verified message string</returns>
-        /// <exception cref="DecryptionHashMismatchException"></exception>
-        public static string Decrypt(byte[] buffer, int offset, byte[] key, out int packetLength)
-        {
-            int len = BitConverter.ToInt32(buffer, offset);
-            packetLength = 4 + len + hashAlgorithm.HashSize / 8;
-            return Decrypt(buffer.Skip(offset).ToArray(), key);
-        }
-
-        /// <summary>
         /// Enrypts a string using the provided public key of the recipient
         /// </summary>
         /// <param name="message">The string to be encrypted. Supports Unicode (UTF-16)</param>
@@ -337,6 +312,53 @@ namespace QuatschAndSuch
             return BitConverter.GetBytes(msg.Length).Concat(msg).Concat(hash).ToArray();
         }
 
-        
+        /// <summary>
+        /// Locally save a file, encrypted with symmetric encryption. Make sure to not lose the key!
+        /// </summary>
+        /// <param name="path">The path to save the encrypted file at</param>
+        /// <param name="content">To content to encrypt and save</param>
+        /// <param name="key">The key to encrypt everything with. Make sure to pick a secure, hard to guess key</param>
+        public static void SaveEncrypted(string path, string content, string key)
+        {
+            (byte[] password, byte[] salt) = SecuredHash(Encoding.Unicode.GetBytes(key));
+            byte[] iv = new byte[iVSize];
+            RandomNumberGenerator.Fill(iv);
+            using Aes aes = Aes.Create();
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+            aes.BlockSize = SyncBlockSize;
+            using FileStream f = File.Create(path);
+            f.Write(salt);
+            f.Write(iv);
+            using var encryptor = aes.CreateEncryptor(password, iv);
+            using CryptoStream c = new(f, encryptor, CryptoStreamMode.Write);
+            c.Write(Encoding.Unicode.GetBytes(content));
+            c.FlushFinalBlock();
+            f.Flush();
+        }
+
+        /// <summary>
+        /// Retrieve and decrypt the contents of a locally saved, symmetrically enrypted file.
+        /// </summary>
+        /// <param name="path">The path to the encrypted file</param>
+        /// <param name="key">The key that was used to encrypt the data</param>
+        /// <returns></returns>
+        public static string RetrieveEncrypted(string path, string key)
+        {
+            using FileStream f = File.OpenRead(path);
+            byte[] salt = new byte[saltSize];
+            byte[] iv = new byte[iVSize];
+            f.Read(salt);
+            f.Read(iv);
+            byte[] password = SecuredHash(Encoding.Unicode.GetBytes(key), salt);
+            using Aes aes = Aes.Create();
+            aes.Mode = CipherMode.CBC;
+            aes.Padding = PaddingMode.PKCS7;
+            aes.BlockSize = SyncBlockSize;
+            using var decryptor = aes.CreateDecryptor(password, iv);
+            using CryptoStream c = new(f, decryptor, CryptoStreamMode.Read);
+            using StreamReader r = new(c);
+            return r.ReadToEnd();
+        }
     }
 }
