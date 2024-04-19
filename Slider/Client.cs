@@ -6,6 +6,7 @@ using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using WebSocketSharp;
 
 namespace QuatschAndSuch.Slider.Client
 {
@@ -13,10 +14,10 @@ namespace QuatschAndSuch.Slider.Client
     public class Client
     {
 
-        const string infoFilePath = "./info.dat";
-        const string keyFilePath = "./key.dat";
-        const string fallbackLogBasePath = "./";
-        const string conversationsPath = "./Convos";
+        readonly string infoFilePath = "./info.dat";
+        readonly string keyFilePath = "./key.dat";
+        readonly string fallbackLogBasePath = "./";
+        readonly string conversationsPath = "./Convos";
 
         protected Logging logger;
         protected byte[] Key { get; private set; }
@@ -27,6 +28,9 @@ namespace QuatschAndSuch.Slider.Client
 
         protected List<Message> conversation = null;
         protected ClientInfo conversationPartner = null;
+
+        protected WebSocket socket = null;
+        protected ServerInfo activeConnection = null;
 
         public Client(string[] args, Logging frontEndLogger)
         {
@@ -107,6 +111,12 @@ namespace QuatschAndSuch.Slider.Client
             File.WriteAllBytes(path, Crypto.Encrypt(data, PublicKey));
         }
 
+        public bool HasOpenConversation(ClientInfo partner)
+        {
+            string identifier = BitConverter.ToString(Encoding.Unicode.GetBytes(partner.Handle)).Replace("-", string.Empty);
+            return File.Exists(Path.Combine(conversationsPath, identifier + ".dat"));
+        }
+
         public void RequireState(params State[] state)
         {
             State s = State.None;
@@ -118,6 +128,19 @@ namespace QuatschAndSuch.Slider.Client
             if (!HasState(s)) throw new MissingStateException("The required states to run this are missing");
         }
         
+        public void Connect(ServerInfo s)
+        {
+            socket = new(s.Url);
+            socket.Connect();
+            if (socket.ReadyState == WebSocketState.Open)
+            {
+                activeConnection = s;
+                socket.Send(Packet.Serialize(new GreetPacket(s.Identity)));
+            } else
+            {
+                logger.Error("ConnectionError", $"Could not connect to server {s}");
+            }
+        }
     }
 
     [Flags]
@@ -127,6 +150,7 @@ namespace QuatschAndSuch.Slider.Client
         KeysLoaded = 1,
         InfoLoaded = 2,
         ConversationLoaded = 4,
+        ConnectedToServer = 8
     }
 
     [Serializable]

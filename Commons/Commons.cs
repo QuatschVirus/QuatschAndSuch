@@ -38,6 +38,12 @@ namespace QuatschAndSuch
         public readonly string Name;
         public readonly string Description;
         public readonly string Url;
+        public readonly ClientInfo Identity;
+
+        public override string ToString()
+        {
+            return $"{Name} @ {Url}";
+        }
     }
 
     /// <summary>
@@ -108,11 +114,7 @@ namespace QuatschAndSuch
             /// <summary>
             /// Close the connection
             /// </summary>
-            Close,
-            /// <summary>
-            /// Requesting the last saved client info for a user with the handle in the <see cref="reason"><c>reason</c></see> field
-            /// </summary>
-            UpdatedClientInfo
+            Close
         }
 
         public BasicPacket(byte value, string reason)
@@ -136,6 +138,28 @@ namespace QuatschAndSuch
         public GreetPacket(ClientInfo clientInfo)
         {
             this.clientInfo = clientInfo;
+        }
+    }
+
+    [Serializable, Packet(2)]
+    public class QueryPacket : Packet
+    {
+        public readonly string query;
+
+        public QueryPacket(string query)
+        {
+            this.query = query;
+        }
+    }
+
+    [Serializable, Packet(3)]
+    public class QueryDataPacket : Packet
+    {
+        public readonly object data;
+
+        public QueryDataPacket(object data)
+        {
+            this.data = data;
         }
     }
 
