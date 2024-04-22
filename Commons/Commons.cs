@@ -55,6 +55,13 @@ namespace QuatschAndSuch
         public readonly string Name;
         public readonly string Handle;
         public readonly byte[] key;
+
+        public ClientInfo(string name, string handle, byte[] key)
+        {
+            Name = name;
+            Handle = handle;
+            this.key = key;
+        }
     }
 
     public class Packet
