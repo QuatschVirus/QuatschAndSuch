@@ -13,6 +13,8 @@ namespace QuatschAndSuch.Slider.Client
 
     public class Client
     {
+        public event Action StateUpdated;
+        public event Action<PromptType, string> PromptInitiated;
 
         readonly string infoFilePath = "./info.dat";
         readonly string keyFilePath = "./key.dat";
@@ -32,9 +34,14 @@ namespace QuatschAndSuch.Slider.Client
         protected WebSocket socket = null;
         protected ServerInfo activeConnection = null;
 
+        #region ---StateFlags---
+        protected bool identityAcknowledged = false;
+        #endregion
+
         public Client(string[] args, Logging frontEndLogger)
         {
             logger = frontEndLogger ?? new(Path.Combine(fallbackLogBasePath, Logging.LogFileName));
+            StateUpdated.Invoke();
         }
 
         public void LoadKeys(string password)
@@ -47,6 +54,7 @@ namespace QuatschAndSuch.Slider.Client
             {
                 GenerateNewKeys(password);
             }
+            StateUpdated.Invoke();
         }
 
         public void SaveKeys(string password)
@@ -66,6 +74,8 @@ namespace QuatschAndSuch.Slider.Client
             if (Key != null && PublicKey != null) s |= State.KeysLoaded;
             if (servers != null && clients != null) s |= State.InfoLoaded;
             if (conversation != null && conversationPartner != null) s |= State.ConversationLoaded;
+            if (socket != null && socket.IsAlive) s |= State.ConnectedToServer; 
+            if (identityAcknowledged) s |= State.IdentityAckowledged;
 
             return s;
         }
@@ -85,6 +95,7 @@ namespace QuatschAndSuch.Slider.Client
                 logger.Warn("InfoFileNotFound", $"The info file at {Path.GetFullPath(infoFilePath)} could not be loaded. Creating a new empty file");
                 SaveInfo(password);
             }
+            StateUpdated.Invoke();
         }
 
         public void SaveInfo(string password)
@@ -100,6 +111,7 @@ namespace QuatschAndSuch.Slider.Client
             string data = Crypto.Decrypt(File.ReadAllBytes(path), Key);
             conversation = JsonSerializer.Deserialize<List<Message>>(data);
             conversationPartner = partner;
+            StateUpdated.Invoke();
         }
 
         public void SaveConversation()
@@ -128,17 +140,62 @@ namespace QuatschAndSuch.Slider.Client
             if (!HasState(s)) throw new MissingStateException("The required states to run this are missing");
         }
         
-        public void Connect(ServerInfo s)
+        public bool Connect(ServerInfo s)
         {
             socket = new(s.Url);
             socket.Connect();
             if (socket.ReadyState == WebSocketState.Open)
             {
                 activeConnection = s;
-                socket.Send(Packet.Serialize(new GreetPacket(s.Identity)));
+                socket.OnMessage += OnMessage;
+                StateUpdated.Invoke();
+                return true;
             } else
             {
                 logger.Error("ConnectionError", $"Could not connect to server {s}");
+                return false;
+            }
+        }
+
+        public void Greet(ClientInfo c)
+        {
+            socket.Send(Packet.Serialize(new GreetPacket(c)));
+        }
+
+        protected virtual void OnMessage(object sender, MessageEventArgs e)
+        {
+            Packet packet;
+            if (e.IsBinary)
+            {
+                packet = Packet.Deserialize(Crypto.Decrypt(e.RawData, Key));
+            } else if (e.IsText)
+            {
+                packet = Packet.Deserialize(e.Data);
+            } else if (e.IsPing)
+            {
+                packet = new BasicPacket(BasicPacket.BasicValue.Ping, "");
+            } else
+            {
+                return;
+            }
+
+            switch (packet)
+            {
+                case BasicPacket p:
+                    {
+                        if (!identityAcknowledged)
+                        {
+                            if (p.value == BasicPacket.BasicValue.Acknowledge)
+                            {
+                                identityAcknowledged = true;
+                            } else if (p.value == BasicPacket.BasicValue.NonAcknowledge)
+                            {
+                                PromptInitiated.Invoke(PromptType.NewHandle, "");
+                            }
+                            return;
+                        }
+                        break;
+                    }
             }
         }
     }
@@ -150,7 +207,13 @@ namespace QuatschAndSuch.Slider.Client
         KeysLoaded = 1,
         InfoLoaded = 2,
         ConversationLoaded = 4,
-        ConnectedToServer = 8
+        ConnectedToServer = 8,
+        IdentityAckowledged = 16,
+    }
+
+    public enum PromptType
+    {
+        NewHandle
     }
 
     [Serializable]

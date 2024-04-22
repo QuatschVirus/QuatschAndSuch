@@ -99,6 +99,7 @@ namespace QuatschAndSuch
 
         public enum BasicValue
         {
+            Ping,
             /// <summary>
             /// General acknowledgement / positive answer
             /// </summary>
