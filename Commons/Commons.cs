@@ -10,11 +10,6 @@ using System.Text.Json;
 
 namespace QuatschAndSuch
 {
-    class Commons
-    {
-        
-    }
-
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
     public class PacketAttribute : Attribute
     {
@@ -52,9 +47,9 @@ namespace QuatschAndSuch
     [Serializable]
     public class ClientInfo
     {
-        public readonly string Name;
-        public readonly string Handle;
-        public readonly byte[] key;
+        public string Name;
+        public string Handle;
+        public byte[] key;
 
         public ClientInfo(string name, string handle, byte[] key)
         {
@@ -408,5 +403,25 @@ namespace QuatschAndSuch
             using StreamReader r = new(c);
             return r.ReadToEnd();
         }
+    }
+
+    [Serializable]
+    public class AuthClientInfo : ClientInfo
+    {
+        public Service authorizedServices;
+        public byte[] salt;
+
+        public AuthClientInfo(string name, string handle, byte[] key, Service authorizedServices, byte[] salt) : base(name, handle, key)
+        {
+            this.authorizedServices = authorizedServices;
+            this.salt = salt;
+        }
+    }
+
+    [Flags]
+    public enum Service
+    {
+        None = 0,
+        Slider = 1
     }
 }

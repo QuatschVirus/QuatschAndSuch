@@ -1,12 +1,21 @@
-﻿using System.Net;
+﻿using System.IO;
+using System.Net;
+using System.Text;
+using System.Security.Cryptography;
+using System.Buffers.Text;
 
-namespace QuatschAndSuch.AuthServer
+namespace QuatschAndSuch.Authentication.Server
 {
-    class AuthServer
+    public class AuthServer
     {
         const string url = "http://*:5000";
 
         readonly HttpListener http = new();
+
+        byte[] key;
+        byte[] publicKey;
+
+        Dictionary<string, AuthClientInfo> clients = new();
 
         public static void Main(string[] args)
         {
@@ -16,13 +25,19 @@ namespace QuatschAndSuch.AuthServer
         public AuthServer()
         {
             http.Prefixes.Add(url);
+            RenewKeys();
         }
 
         void Recieve()
         {
             var ctx = http.GetContext();
             var req = ctx.Request;
-            var resp = ctx.Response;
+            using var resp = ctx.Response;
+            using StreamReader input = new(req.InputStream, req.ContentEncoding);
+            using StreamWriter output = new(resp.OutputStream, Encoding.Unicode);
+            resp.ContentEncoding = Encoding.Unicode;
+            long outLength = resp.ContentLength64;
+            HttpStatusCode code = HttpStatusCode.OK;
 
             if (req.HasEntityBody)
             {
@@ -30,34 +45,33 @@ namespace QuatschAndSuch.AuthServer
                 {
                     case "/preauth":
                         {
-                            
+                            string handle = input.ReadToEnd();
+
+                            output.WriteLine(Convert.ToBase64String(publicKey));
+                            break;
+                        }
+                    case "/provider":
+                        {
+                            break;
+                        }
+                    default:
+                        {
+                            code = HttpStatusCode.NotFound;
+                            break;
                         }
                 }
+                
             }
+
+            resp.StatusCode = (int)code;
+            resp.ContentLength64 = outLength;
         }
 
-        bool CheckAuthentication()
+        void RenewKeys()
         {
-
+            (key, publicKey) = Crypto.GenerateKeyPair();
         }
-    }
 
-    [Serializable]
-    class AuthClientInfo : ClientInfo
-    {
-        public readonly Service authorizedServices;
-        public readonly byte[] salt;
 
-        public AuthClientInfo(string name, string handle, byte[] key, Service authorizedServices, byte[] salt) : base(name, handle, key)
-        {
-            this.authorizedServices = authorizedServices;
-            this.salt = salt;
-        }
-    }
-
-    [Flags]
-    public enum Service
-    {
-        Slider = 1
     }
 }
