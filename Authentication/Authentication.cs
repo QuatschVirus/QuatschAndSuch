@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using QuatschAndSuch.Logging;
 
 namespace QuatschAndSuch.Authentication
 {
@@ -21,8 +22,14 @@ namespace QuatschAndSuch.Authentication
         readonly byte[] key;
         readonly byte[] publicKey;
 
-        public AuthenticationProvider(string serverURL, Service service, TimeSpan authenticationLife, TimeSpan certificateTimeout, TimeSpan timeout)
+        readonly Logger logger;
+
+        public bool Validated { get; private set; } = false;
+
+        public AuthenticationProvider(string serverURL, Service service, TimeSpan authenticationLife, TimeSpan certificateTimeout, TimeSpan timeout, Logger logger)
         {
+            this.logger = logger;
+            this.logger.Info("Beginning initalization of AuthenticationProvider", )
             this.service = service;
             this.authenticationLife = authenticationLife;
             this.certificateTimeout = certificateTimeout;
@@ -38,6 +45,13 @@ namespace QuatschAndSuch.Authentication
             var response = http.Send(GetInitializationMessage());
             response.EnsureSuccessStatusCode();
             serverKey = Convert.FromBase64String(response.Content.ReadAsStringAsync().Result);
+        }
+
+        public bool Revalidate(string secret)
+        {
+            var response = http.Send(GetEncryptedMessage("VALIDATE", service.ToString(), Convert.ToBase64String(SHA256.HashData(Encoding.ASCII.GetBytes(secret)))));
+            string[] resp = GetDecryptedResponse(response);
+            if (resp[0])
         }
 
         HttpRequestMessage GetInitializationMessage()
@@ -67,6 +81,22 @@ namespace QuatschAndSuch.Authentication
             byte[] raw = response.Content.ReadAsByteArrayAsync().Result;
             string content = Crypto.Decrypt(raw, key);
             return content.Split('\n');
+        }
+
+        bool ProcessResponse(string[] response, out string header, out string[] body, params string[] validHeaders)
+        {
+            if (response.Length < 1) throw new ArgumentException("The response needs to contain atleast a header", nameof(response));
+            header = response[0];
+            if (header == "INVALID")
+            {
+                
+                Validated = false;
+                header = null;
+                body = null;
+                return false;
+            }
+            body = response.Skip(1).ToArray();
+            return validHeaders.Contains(header);
         }
 
         public bool Renew(AuthenticationCertificate certificate)
@@ -113,6 +143,11 @@ namespace QuatschAndSuch.Authentication
                 return CheckAuthentication(handle);
             }
             return false;
+        }
+
+        public void Revoke(string handle)
+        {
+            certificates.Remove(handle);
         }
     }
 
