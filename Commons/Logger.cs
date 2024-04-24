@@ -72,29 +72,31 @@ namespace QuatschAndSuch.Logging
 
     public class ANSICode
     {
+        int primary;
         string content;
+
+
 
         public ANSICode(int number)
         {
-            content = $"\x1b[{number}m";
+            primary = number;
+        }
+
+        public ANSICode(string content)
+        {
+            this.content = content;
         }
 
         public static implicit operator string(ANSICode code)
         {
-            return code.content;
+            return ;
         }
 
-        public static class Foreground
-        {
-            public static readonly string Black = FromNumber(30);
-            public static readonly string 
-        }
-
-        public static string FromNumber(int number)
+        public static string FromPrimaryNumber(int number)
         {
             return $"\x1b[{number}m";
         }
 
-        public static readonly string Reset = FromNumber(0);
+        public const string Reset = "\x1b[0m";
     }
 }
