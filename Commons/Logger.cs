@@ -23,12 +23,23 @@ namespace QuatschAndSuch.Logging
             ShowInfo = showInfo;
             ColorOutput = colorOutput;
             InfoColor = infoColor;
+
+            using TextWriter file = new StreamWriter(File.OpenWrite(path));
+            streams.Add(file);
+            errorStreams.Add(file);
+        }
+
+        public Logger AddConsoleStreams()
+        {
+            streams.Add(Console.Out);
+            errorStreams.Add(Console.Error);
+            return this;
         }
 
         public readonly bool ShowInfo;
         public readonly bool ColorOutput;
-        public readonly List<StreamWriter> streams;
-        public readonly List<StreamWriter> errorStreams;
+        public readonly List<TextWriter> streams;
+        public readonly List<TextWriter> errorStreams;
         public readonly string LogFile;
         public readonly ANSICode InfoColor;
 
@@ -63,12 +74,12 @@ namespace QuatschAndSuch.Logging
 
         public void RawWrite(string content, ANSICode color = null, bool writeToErrorStream = false, bool writeToConsoleOverride = true, bool writeToFileOverride = true)
         {
-            if (color == null) color = ANSICode.Reset;
+            color ??= ANSICode.Reset;
 
-            List<StreamWriter> writers = writeToErrorStream ? errorStreams : streams;
-            foreach (StreamWriter writer in writers)
+            List<TextWriter> writers = writeToErrorStream ? errorStreams : streams;
+            foreach (var writer in writers)
             {
-
+                writer.WriteLine(ANSICode.Reset + color + content + ANSICode.Reset);
             }
         }
 
@@ -77,9 +88,9 @@ namespace QuatschAndSuch.Logging
 
     public class ANSICode
     {
-        int primary = 0;
-        int[] parameters;
-        string content = "";
+        readonly int primary = 0;
+        readonly int[] parameters;
+        readonly string content = "";
 
         public ANSICode Bright => new(primary + 60);
         public ANSICode Background => new(primary + 10);

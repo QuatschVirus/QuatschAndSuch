@@ -29,7 +29,7 @@ namespace QuatschAndSuch.Authentication
         public AuthenticationProvider(string serverURL, Service service, TimeSpan authenticationLife, TimeSpan certificateTimeout, TimeSpan timeout, Logger logger)
         {
             this.logger = logger;
-            this.logger.Info("Beginning initalization of AuthenticationProvider", )
+            this.logger.Info("Beginning initalization of AuthenticationProvider");
             this.service = service;
             this.authenticationLife = authenticationLife;
             this.certificateTimeout = certificateTimeout;
@@ -51,7 +51,21 @@ namespace QuatschAndSuch.Authentication
         {
             var response = http.Send(GetEncryptedMessage("VALIDATE", service.ToString(), Convert.ToBase64String(SHA256.HashData(Encoding.ASCII.GetBytes(secret)))));
             string[] resp = GetDecryptedResponse(response);
-            if (resp[0])
+            if (ProcessResponse(resp, out var header, out var body, "VALIDATED", "VALIDATION_FAILED"))
+            {
+                if (header == "VALIDATED")
+                {
+                    logger.Info("AuthenticationProvider has been revalidated" + ((body.Length > 0) ? ("\n" + string.Join('\n', body)) : ""));
+                    return true;
+                } else
+                {
+                    logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated. Reason: " + ((body.Length > 0) ? ("\n" + string.Join('\n', body)) : ""));
+                }
+            } else
+            {
+                logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated becasue the response was invalid. You may need to contact the developers");
+            }
+            return false;
         }
 
         HttpRequestMessage GetInitializationMessage()
@@ -89,7 +103,7 @@ namespace QuatschAndSuch.Authentication
             header = response[0];
             if (header == "INVALID")
             {
-                
+                logger.Warn("InvalidAuthenticationProvider", "VAlidation for the AuthenticationProvider has expired");
                 Validated = false;
                 header = null;
                 body = null;

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using QuatschAndSuch.Logging;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -21,7 +22,7 @@ namespace QuatschAndSuch.Slider.Client
         readonly string fallbackLogBasePath = "./";
         readonly string conversationsPath = "./Convos";
 
-        protected Logging logger;
+        protected Logging.Logger logger;
         protected byte[] Key { get; private set; }
         protected byte[] PublicKey { get; private set; }
 
@@ -38,9 +39,9 @@ namespace QuatschAndSuch.Slider.Client
         protected bool identityAcknowledged = false;
         #endregion
 
-        public Client(string[] args, Logging frontEndLogger)
+        public Client(string[] args, Logging.Logger frontEndLogger)
         {
-            logger = frontEndLogger ?? new(Path.Combine(fallbackLogBasePath, Logging.LogFileName));
+            logger = frontEndLogger ?? new(Path.Combine(fallbackLogBasePath, Logging.Logger.LogFileName));
             StateUpdated.Invoke();
         }
 
