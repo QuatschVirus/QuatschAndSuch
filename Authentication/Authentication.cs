@@ -9,8 +9,10 @@ namespace QuatschAndSuch.Authentication
 {
     public class AuthenticationProvider
     {
+        public readonly Guid uid;
+
         readonly Dictionary<string, AuthenticationCertificate> certificates = new();
-        readonly Service service;
+        public readonly Service service;
         readonly TimeSpan authenticationLife;
         readonly TimeSpan certificateTimeout;
         readonly TimeSpan timeout;
@@ -20,16 +22,17 @@ namespace QuatschAndSuch.Authentication
         readonly byte[] serverKey;
 
         readonly byte[] key;
-        readonly byte[] publicKey;
+        public readonly byte[] publicKey;
 
         readonly Logger logger;
 
         public bool Validated { get; private set; } = false;
 
-        public AuthenticationProvider(string serverURL, Service service, TimeSpan authenticationLife, TimeSpan certificateTimeout, TimeSpan timeout, Logger logger)
+        public AuthenticationProvider(Guid guid, string serverURL, Service service, TimeSpan authenticationLife, TimeSpan certificateTimeout, TimeSpan timeout, Logger logger)
         {
+            this.uid = guid;
             this.logger = logger;
-            this.logger.Info("Beginning initalization of AuthenticationProvider");
+            this.logger.Info("Beginning initalization of AuthenticationProvider", $"AuthenticationProvider [{uid}]");
             this.service = service;
             this.authenticationLife = authenticationLife;
             this.certificateTimeout = certificateTimeout;
@@ -55,24 +58,24 @@ namespace QuatschAndSuch.Authentication
             {
                 if (header == "VALIDATED")
                 {
-                    logger.Info("AuthenticationProvider has been revalidated" + ((body.Length > 0) ? ("\n" + string.Join('\n', body)) : ""));
+                    logger.Info("AuthenticationProvider has been revalidated" + ((body.Length > 0) ? ("\n" + string.Join('\n', body)) : ""), $"AuthenticationProvider [{uid}]");
                     return true;
                 } else
                 {
-                    logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated. Reason: " + ((body.Length > 0) ? ("\n" + string.Join('\n', body)) : ""));
+                    logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated. Reason: " + ((body.Length > 0) ? ("\n" + string.Join('\n', body)) : ""), $"AuthenticationProvider [{uid}]");
                 }
             } else
             {
-                logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated becasue the response was invalid. You may need to contact the developers");
+                logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated becasue the response was invalid. You may need to contact the developers", $"AuthenticationProvider [{uid}]");
             }
             return false;
         }
 
         HttpRequestMessage GetInitializationMessage()
         {
-            return new(HttpMethod.Post, new Uri(serverURL, "/provider"))
+            return new(HttpMethod.Post, new Uri(serverURL, "/provider-init"))
             {
-                Content = JsonContent.Create((service, publicKey))
+                Content = JsonContent.Create(new ProviderInfo(this))
             };
         }
 
@@ -83,9 +86,10 @@ namespace QuatschAndSuch.Authentication
 
         HttpRequestMessage GetEncryptedMessage(params string[] content)
         {
+            byte[] data = uid.ToByteArray().Concat(Crypto.Encrypt(string.Join('\n', content), serverKey)).ToArray();
             return new(HttpMethod.Post, new Uri(serverURL, "/provider"))
             {
-                Content = new ByteArrayContent(Crypto.Encrypt(string.Join('\n', content), serverKey))
+                Content = new ByteArrayContent(data)
             };
         }
 
@@ -103,7 +107,7 @@ namespace QuatschAndSuch.Authentication
             header = response[0];
             if (header == "INVALID")
             {
-                logger.Warn("InvalidAuthenticationProvider", "VAlidation for the AuthenticationProvider has expired");
+                logger.Warn("InvalidAuthenticationProvider", "VAlidation for the AuthenticationProvider has expired", $"AuthenticationProvider [{uid}]");
                 Validated = false;
                 header = null;
                 body = null;
@@ -236,5 +240,25 @@ namespace QuatschAndSuch.Authentication
             string data = $"({Service}) {Handle}: {Token} [{FirstIssued:yyyy-MM-dd HH-mm-ss}]";
             return Convert.ToBase64String(SHA256.HashData(Encoding.Unicode.GetBytes(data)));
         }
+    }
+
+    [Serializable]
+    public struct ProviderInfo
+    {
+        public readonly Guid uid;
+        public readonly Service service;
+        public readonly byte[] key;
+        public DateTime runout = DateTime.UtcNow;
+
+        public ProviderInfo(Guid uid, Service service, byte[] key) : this()
+        {
+            this.uid = uid;
+            this.service = service;
+            this.key = key;
+        }
+
+        public ProviderInfo(AuthenticationProvider source) : this(source.uid, source.service, source.publicKey) {}
+
+        public readonly bool Valid => runout > DateTime.UtcNow;
     }
 }

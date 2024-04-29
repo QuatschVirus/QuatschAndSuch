@@ -3,28 +3,39 @@ using System.Net;
 using System.Text;
 using System.Security.Cryptography;
 using System.Buffers.Text;
+using System.Text.Json;
 
 namespace QuatschAndSuch.Authentication.Server
 {
     public class AuthServer
     {
         const string url = "http://*:5000";
+        const string providerFilePath = "./providers.dat";
+
+        public static readonly TimeSpan validationLife = TimeSpan.FromMinutes(60);
 
         readonly HttpListener http = new();
 
         byte[] key;
         byte[] publicKey;
 
-        Dictionary<string, AuthClientInfo> clients = new();
+        readonly Dictionary<string, AuthClientInfo> clients = new();
+        readonly Dictionary<string, AuthenticationSignature> signatures = new();
+
+        readonly Dictionary<Guid, ProviderInfo> providers = new();
+        readonly Dictionary<Guid, byte[]> recognisedProviders = new();
+
+
 
         public static void Main(string[] args)
         {
             
         }
 
-        public AuthServer()
+        public AuthServer(string key)
         {
             http.Prefixes.Add(url);
+            recognisedProviders = JsonSerializer.Deserialize<Dictionary<Guid, byte[]>>(Crypto.RetrieveEncrypted(providerFilePath, key));
             RenewKeys();
         }
 
@@ -50,8 +61,11 @@ namespace QuatschAndSuch.Authentication.Server
                             output.WriteLine(Convert.ToBase64String(publicKey));
                             break;
                         }
-                    case "/provider":
+                    case "/provider-init":
                         {
+                            ProviderInfo info = JsonSerializer.Deserialize<ProviderInfo>(input.ReadToEnd());
+                            if (recognisedProviders.ContainsKey(info.uid) && !providers.ContainsKey(info.uid)) providers.Add(info.uid, info);
+                            output.Write(Convert.ToBase64String(publicKey));
                             break;
                         }
                     default:
@@ -71,7 +85,5 @@ namespace QuatschAndSuch.Authentication.Server
         {
             (key, publicKey) = Crypto.GenerateKeyPair();
         }
-
-
     }
 }
