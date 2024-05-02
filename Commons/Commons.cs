@@ -21,6 +21,35 @@ namespace QuatschAndSuch
         }
     }
 
+    public static class Commons
+    {
+        public static object GetValue(this MemberInfo memberInfo, object forObject)
+        {
+            switch (memberInfo.MemberType)
+            {
+                case MemberTypes.Field:
+                    return ((FieldInfo)memberInfo).GetValue(forObject);
+                case MemberTypes.Property:
+                    return ((PropertyInfo)memberInfo).GetValue(forObject);
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+
+        public static void SetValue(this MemberInfo memberInfo, object forObject, object value)
+        {
+            switch (memberInfo.MemberType)
+            {
+                case MemberTypes.Field:
+                    ((FieldInfo)memberInfo).SetValue(forObject, value); break;
+                case MemberTypes.Property:
+                    ((PropertyInfo)memberInfo).SetValue(forObject, value); break;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+    }
+
     public class MissingAtttributeException : Exception { }
     
 
@@ -409,12 +438,12 @@ namespace QuatschAndSuch
     public class AuthClientInfo : ClientInfo
     {
         public Service authorizedServices;
-        public byte[] salt;
+        public string password;
 
-        public AuthClientInfo(string name, string handle, byte[] key, Service authorizedServices, byte[] salt) : base(name, handle, key)
+        public AuthClientInfo(string name, string handle, byte[] key, Service authorizedServices, string password) : base(name, handle, key)
         {
             this.authorizedServices = authorizedServices;
-            this.salt = salt;
+            this.password = password;
         }
     }
 
@@ -423,5 +452,53 @@ namespace QuatschAndSuch
     {
         None = 0,
         Slider = 1
+    }
+
+    public class PersistanceSave<T>
+    {
+        readonly T instance;
+        string path;
+
+        public PersistanceSave(T instance, string path)
+        {
+            this.instance = instance;
+            this.path = path;
+        }
+
+        public void Save(string key)
+        {
+            var vars = from m in typeof(T).GetMembers()
+                       where m.IsDefined(typeof(PersistanceAttribute))
+                       select (m.Name, m.GetValue(instance));
+            Dictionary<string, object> dic = vars.ToDictionary(v => v.Name, v => v.Item2);
+            Crypto.SaveEncrypted(path, JsonSerializer.Serialize(dic), key);
+        }
+
+        public void Load(string key)
+        {
+            Dictionary<string, object> dic = JsonSerializer.Deserialize<Dictionary<string, object>>(Crypto.RetrieveEncrypted(path, key));
+            foreach (var kv in dic)
+            {
+                var ms = typeof(T).GetMember(kv.Key);
+                if (ms.Length > 0)
+                {
+                    var m = ms.First();
+                    if (m.IsDefined(typeof(PersistanceAttribute))) m.SetValue(instance, kv.Value);
+                }
+            }
+        }
+
+        public void Migrate(string newPath, string oldKey, string newKey)
+        {
+            string content = Crypto.RetrieveEncrypted(path, oldKey);
+            Crypto.SaveEncrypted(newPath, content, newKey);
+            path = newPath;
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
+    public class PersistanceAttribute : Attribute
+    {
+        
     }
 }

@@ -66,7 +66,7 @@ namespace QuatschAndSuch.Authentication
                 }
             } else
             {
-                logger.Error("ValidationFailed", "AuthenticationProvider could not be reauthenticated becasue the response was invalid. You may need to contact the developers", $"AuthenticationProvider [{uid}]");
+                logger.Error("ValidationFailed", $"AuthenticationProvider could not be reauthenticated becasue the response was invalid. You may need to contact the developers. Recieved:\n{header}\n{string.Join('\n', body)}", $"AuthenticationProvider [{uid}]");
             }
             return false;
         }
@@ -89,7 +89,7 @@ namespace QuatschAndSuch.Authentication
             byte[] data = uid.ToByteArray().Concat(Crypto.Encrypt(string.Join('\n', content), serverKey)).ToArray();
             return new(HttpMethod.Post, new Uri(serverURL, "/provider"))
             {
-                Content = new ByteArrayContent(data)
+                Content = new StringContent(Convert.ToBase64String(data))
             };
         }
 
@@ -243,14 +243,14 @@ namespace QuatschAndSuch.Authentication
     }
 
     [Serializable]
-    public struct ProviderInfo
+    public class ProviderInfo
     {
         public readonly Guid uid;
         public readonly Service service;
         public readonly byte[] key;
         public DateTime runout = DateTime.UtcNow;
 
-        public ProviderInfo(Guid uid, Service service, byte[] key) : this()
+        public ProviderInfo(Guid uid, Service service, byte[] key)
         {
             this.uid = uid;
             this.service = service;
@@ -259,6 +259,6 @@ namespace QuatschAndSuch.Authentication
 
         public ProviderInfo(AuthenticationProvider source) : this(source.uid, source.service, source.publicKey) {}
 
-        public readonly bool Valid => runout > DateTime.UtcNow;
+        public bool Valid => runout > DateTime.UtcNow;
     }
 }
