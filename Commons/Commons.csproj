@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="7.0.18" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.8" />
   </ItemGroup>
 
