@@ -15,12 +15,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Commons.Database
 {
-    public abstract class DatabaseContext : DbContext
+    public abstract class Database : DbContext
     {
         readonly string source;
         readonly string key;
 
-        public DatabaseContext(string source, string key)
+        public Database(string source, string key)
         {
             this.source = source;
             this.key = key;

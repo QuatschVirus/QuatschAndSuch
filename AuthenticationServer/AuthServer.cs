@@ -4,9 +4,25 @@ using System.Text;
 using System.Security.Cryptography;
 using System.Buffers.Text;
 using System.Text.Json;
+using Commons.Database;
+using Microsoft.EntityFrameworkCore;
+using QuatschAndSuch.Authentication;
+using SQLitePCL;
+using System.Net.Sockets;
 
 namespace QuatschAndSuch.Authentication.Server
 {
+    public class AuthServerDatabase : Database
+    {
+        public DbSet<AuthServerClient> Clients { get; set; }
+        public DbSet<ProviderInfo> Providers { get; set; }
+
+        public AuthServerDatabase(string key) : base("./database.db", key)
+        {
+
+        }
+    }
+
     public class AuthServer
     {
         const string url = "http://*:5000";
@@ -19,12 +35,13 @@ namespace QuatschAndSuch.Authentication.Server
         byte[] key;
         byte[] publicKey;
 
-        readonly Dictionary<string, AuthClientInfo> clients = new();
-        readonly Dictionary<string, AuthenticationSignature> signatures = new();
+        readonly AuthServerDatabase db;
+        readonly PacketHandler packetHandler = new()
+        {
+            FallbackHandler = (p, t) => (new BasicPacket(BasicPacket.BasicValue.Invalid, ""), null),
+        };
 
         readonly Dictionary<Guid, ProviderInfo> providers = new();
-        readonly Dictionary<Guid, (Service, string)> recognisedProviders = new();
-
 
 
         public static void Main(string[] args)
@@ -34,9 +51,54 @@ namespace QuatschAndSuch.Authentication.Server
 
         public AuthServer(string key)
         {
+            db = new(key);
             http.Prefixes.Add(url);
-            recognisedProviders = JsonSerializer.Deserialize<Dictionary<Guid, (Service, string)>>(Crypto.RetrieveEncrypted(providerFilePath, key));
             RenewKeys();
+
+            packetHandler.RegisterHandler<GreetPacket>((p, t) =>
+            {
+                GreetPacket packet = p as GreetPacket;
+                AuthServerClient c = db.Clients.Find(packet.clientInfo.Handle);
+                if (c == null)
+                {
+                    db.Clients.Add(new(packet.clientInfo));
+                }
+                else
+                {
+                    c.key = packet.clientInfo.key;
+                }
+                db.SaveChanges();
+                return (new KeyPacket(publicKey), null);
+            });
+
+            packetHandler.RegisterHandler<ProviderPacket>((pc, t) =>
+            {
+                ProviderPacket packet = pc as ProviderPacket;
+                ProviderInfo p = db.Providers.Find(packet.info.uid);
+                if (p == null)
+                {
+                    return (new BasicPacket(BasicPacket.BasicValue.NonAcknowledge, "Unkown provider"), null);
+                }
+                if (packet.seekingValidation)
+                {
+                    if (p.service == packet.info.service && p.secret == packet.info.secret)
+                    {
+                        p.runout = DateTime.UtcNow + validationLife;
+                        db.SaveChanges();
+                        return (new BasicPacket(BasicPacket.BasicValue.Acknowledge, "Revalidated"), null);
+                    }
+                    else
+                    {
+                        return (new BasicPacket(BasicPacket.BasicValue.NonAcknowledge, "Revalidation failed"), null);
+                    }
+                }
+                else
+                {
+                    p.key = packet.info.key;
+                    db.SaveChanges();
+                    return (new KeyPacket(publicKey), null);
+                }
+            });
         }
 
         void Recieve()
@@ -44,100 +106,20 @@ namespace QuatschAndSuch.Authentication.Server
             var ctx = http.GetContext();
             var req = ctx.Request;
             using var resp = ctx.Response;
-            using StreamReader input = new(req.InputStream, req.ContentEncoding);
-            using StreamWriter output = new(resp.OutputStream, Encoding.Unicode);
             resp.ContentEncoding = Encoding.Unicode;
-            long outLength = resp.ContentLength64;
             HttpStatusCode code = HttpStatusCode.OK;
 
+            Packet response = new BasicPacket(BasicPacket.BasicValue.Invalid, "");
+            byte[] recieverKey = null;
             if (req.HasEntityBody)
             {
-                switch (req.Url.LocalPath)
-                {
-                    case "/preauth":
-                        {
-                            string handle = input.ReadLine();
-                            byte[] key = Convert.FromBase64String(input.ReadToEnd());
-
-
-
-                            output.WriteLine(Convert.ToBase64String(publicKey));
-                            break;
-                        }
-                    case "/provider-init":
-                        {
-                            ProviderInfo info = JsonSerializer.Deserialize<ProviderInfo>(input.ReadToEnd());
-                            if (recognisedProviders.ContainsKey(info.uid) && !providers.ContainsKey(info.uid)) providers.Add(info.uid, info);
-                            output.Write(Convert.ToBase64String(publicKey));
-                            break;
-                        }
-                    case "/provider":
-                        {
-                            byte[] data = Convert.FromBase64String(input.ReadToEnd());
-                            Guid uid = new(data.Take(16).ToArray());
-                            string[] content = Crypto.Decrypt(data.Skip(16).ToArray(), key).Split('\n');
-                            if (!providers.ContainsKey(uid))
-                            {
-                                output.WriteLine("UNKOWN");
-                                output.WriteLine($"Unkown AuthenticationProvider {uid}");
-                            }
-
-                            switch (content[0])
-                            {
-                                case "VALIDATE":
-                                    {
-                                        if (!recognisedProviders.ContainsKey(uid))
-                                        {
-                                            output.WriteLine("VALIDATION_FAILED");
-                                            output.WriteLine($"AuthenticationProvider {uid} is not recognised. Contact the developers for recognition");
-                                            break;
-                                        }
-                                        var pData = recognisedProviders[uid];
-                                        Service s = Enum.Parse<Service>(content[1]);
-                                        if (pData == (s, content[2]))
-                                        {
-                                            providers[uid].runout = DateTime.UtcNow + validationLife;
-                                            output.WriteLine("VALIDATED");
-                                            output.WriteLine($"AuthenticationProvider {uid} revalidated until {providers[uid].runout:o}");
-                                        } else
-                                        {
-                                            output.WriteLine("VALIDATION_FAILED");
-                                            output.WriteLine($"AuthenticationProvider {uid} revalidation failed. Secret or Services did not match with the record (Services: {content[1]} vs {recognisedProviders[uid].Item1})");
-                                        }
-                                        break;
-                                    }
-                                case "AUTH":
-                                    {
-                                        break;
-                                    }
-                                case "RENEW":
-                                    {
-                                        break;
-                                    }
-                                default:
-                                    {
-                                        providers[uid].runout = DateTime.UtcNow;
-                                        output.WriteLine("REVALIDATE");
-                                        output.WriteLine($"Sent invalid header ({content[0]}), revalidate for security");
-                                        break;
-                                    }
-                            }
-                            break;
-                        }
-                    case "/auth":
-                        {
-                            (string handle, string password) = JsonSerializer.Deserialize<(string, string)>(Crypto.Decrypt(Convert.FromBase64String(input.ReadToEnd()), key));
-
-                        }
-                    default:
-                        {
-                            code = HttpStatusCode.NotFound;
-                            break;
-                        }
-                }
-                
+                byte[] buffer = new byte[req.ContentLength64];
+                _ = req.InputStream.Read(buffer);
+                Packet pc = Authentication.BodyToPacket(buffer, key);
+                (response, recieverKey) = packetHandler.Handle(pc);
             }
-
+            byte[] body = Authentication.PacketToBody(response, recieverKey, out long outLength);
+            resp.OutputStream.Write(body);
             resp.StatusCode = (int)code;
             resp.ContentLength64 = outLength;
         }
@@ -146,5 +128,7 @@ namespace QuatschAndSuch.Authentication.Server
         {
             (key, publicKey) = Crypto.GenerateKeyPair();
         }
+
+        
     }
 }

@@ -1,8 +1,8 @@
 ﻿using System.ComponentModel;
-using System.Linq;
-using System.Linq.Expressions;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Net.Sockets;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,9 +13,9 @@ namespace QuatschAndSuch
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
     public class PacketAttribute : Attribute
     {
-        public byte id;
+        public uint id;
 
-        public PacketAttribute(byte id)
+        public PacketAttribute(uint id)
         {
             this.id = id;
         }
@@ -25,15 +25,12 @@ namespace QuatschAndSuch
     {
         public static object GetValue(this MemberInfo memberInfo, object forObject)
         {
-            switch (memberInfo.MemberType)
+            return memberInfo.MemberType switch
             {
-                case MemberTypes.Field:
-                    return ((FieldInfo)memberInfo).GetValue(forObject);
-                case MemberTypes.Property:
-                    return ((PropertyInfo)memberInfo).GetValue(forObject);
-                default:
-                    throw new NotImplementedException();
-            }
+                MemberTypes.Field => ((FieldInfo)memberInfo).GetValue(forObject),
+                MemberTypes.Property => ((PropertyInfo)memberInfo).GetValue(forObject),
+                _ => throw new NotImplementedException(),
+            };
         }
 
         public static void SetValue(this MemberInfo memberInfo, object forObject, object value)
@@ -74,10 +71,12 @@ namespace QuatschAndSuch
     /// Gives information on the client, to keep track of them.
     /// </summary>
     [Serializable]
+    [Table("Clients")]
     public class ClientInfo
     {
         public string Name;
-        public string Handle;
+        [Key] public string Handle;
+        [NotMapped]
         public byte[] key;
 
         public ClientInfo(string name, string handle, byte[] key)
@@ -88,14 +87,70 @@ namespace QuatschAndSuch
         }
     }
 
+    #region --- Packets ---
+
+    public class PacketHandler
+    {
+
+        readonly Dictionary<Type, Func<Packet, List<Packet>, (Packet, byte[])>> handlers = new();
+        public Func<Packet, List<Packet>, (Packet, byte[])> FallbackHandler;
+        readonly Dictionary<int, List<Packet>> threads = new();
+        private readonly Random rng = new();
+
+        public void NewThread(Packet packet)
+        {
+            int threadId = rng.Next();
+            packet.ThreadId = threadId;
+            packet.Index = 0;
+            threads.Add(threadId, new List<Packet>(new Packet[] { packet }));
+        }
+
+        public void CloseThread(Packet packet)
+        {
+            threads.Remove(packet.ThreadId);
+        }
+
+        public void CloseThread(int id) { threads.Remove(id); }
+
+        public List<Packet> GetThread(int threadId)
+        {
+            if (!threads.ContainsKey(threadId)) return null;
+            return threads[threadId].OrderByDescending(p => p.Index).ToList();
+        }
+
+        public List<Packet> GetThread(Packet packet) => GetThread(packet.ThreadId);
+
+        public void RegisterHandler<T>(Func<Packet, List<Packet>, (Packet, byte[])> handler) where T : Packet
+        {
+            handlers.Add(typeof(T), handler);
+        }
+
+        public (Packet, byte[]) Handle(Packet packet)
+        {
+            int threadID = packet.ThreadId;
+            List<Packet> thread = threads.ContainsKey(threadID) ? threads[threadID] : new();
+            Type t = packet.GetType();
+            (Packet, byte[]) result;
+            if (!handlers.ContainsKey(t))
+            {
+                if (FallbackHandler == null) return (null, null);
+                result = FallbackHandler.Invoke(packet, thread);
+            }
+            result = handlers[t].Invoke(packet, thread);
+            packet.MakeResponse(result.Item1);
+            return result;
+        }
+    }
+
+    [Serializable]
     public class Packet
     {
-        public static readonly Dictionary<byte, Type> typeResolve = new();
-        public static readonly Dictionary<Type, byte> idResolve = new();
+        public static readonly Dictionary<uint, Type> typeResolve = new();
+        public static readonly Dictionary<Type, uint> idResolve = new();
 
         public static Packet Deserialize(string data)
         {
-            (byte id, string content) = JsonSerializer.Deserialize<(byte, string)>(data);
+            (uint id, string content) = JsonSerializer.Deserialize<(uint, string)>(data);
             return (Packet)JsonSerializer.Deserialize(content, typeResolve[id]);
         }
 
@@ -119,6 +174,15 @@ namespace QuatschAndSuch
                 idResolve.Add(a.t, a.id);
                 typeResolve.Add(a.id, a.t);
             });
+        }
+
+        public int ThreadId;
+        public uint Index;
+
+        public void MakeResponse(Packet response)
+        {
+            response.ThreadId = ThreadId;
+            response.Index = Index + 1;
         }
     }
 
@@ -146,7 +210,11 @@ namespace QuatschAndSuch
             /// <summary>
             /// Close the connection
             /// </summary>
-            Close
+            Close,
+            /// <summary>
+            /// Invalid request was recieved
+            /// </summary>
+            Invalid
         }
 
         public BasicPacket(byte value, string reason)
@@ -194,6 +262,19 @@ namespace QuatschAndSuch
             this.data = data;
         }
     }
+
+    [Serializable, Packet(4)]
+    public class KeyPacket : Packet
+    {
+        public readonly byte[] key;
+
+        public KeyPacket(byte[] key)
+        {
+            this.key = key;
+        }
+    }
+
+    #endregion
 
     /// <summary>
     /// Static class to provide cryptographic functionality
@@ -327,7 +408,7 @@ namespace QuatschAndSuch
         /// <param name="password">The password to use for PKCS#8. Make sure to handle this securely!</param>
         /// <param name="bytesRead">How many bytes wereread for the key information</param>
         /// <returns>CSP blob for the decoded private key</returns>
-        /// <exception cref="PasswordHashMismatchException"Thrown if the password does not fit the stored password information</exception>
+        /// <exception cref="PasswordHashMismatchException">Thrown if the password does not fit the stored password information</exception>
         public static byte[] RetrieveKey(string path, int offset, string password, out int bytesRead)
         {
             byte[] data = File.ReadAllBytes(path);
@@ -431,19 +512,6 @@ namespace QuatschAndSuch
             using CryptoStream c = new(f, decryptor, CryptoStreamMode.Read);
             using StreamReader r = new(c);
             return r.ReadToEnd();
-        }
-    }
-
-    [Serializable]
-    public class AuthClientInfo : ClientInfo
-    {
-        public Service authorizedServices;
-        public string password;
-
-        public AuthClientInfo(string name, string handle, byte[] key, Service authorizedServices, string password) : base(name, handle, key)
-        {
-            this.authorizedServices = authorizedServices;
-            this.password = password;
         }
     }
 

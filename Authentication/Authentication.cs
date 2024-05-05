@@ -1,12 +1,52 @@
 ﻿using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using QuatschAndSuch.Logging;
 
 namespace QuatschAndSuch.Authentication
 {
+    public class Authentication
+    {
+        public const uint AuthPacketPrefix = 0xFF_00_00_00;
+
+        public static Packet BodyToPacket(byte[] body, byte[] key)
+        {
+            int length = BitConverter.ToInt32(body);
+            string raw;
+            if (length < 0)
+            {
+                raw = Crypto.Decrypt(body.Skip(8).Take(length).ToArray(), key);
+            }
+            else
+            {
+                raw = Encoding.Unicode.GetString(body.Skip(8).Take(length).ToArray());
+            }
+            return Packet.Deserialize(raw);
+        }
+
+        public static byte[] PacketToBody(Packet packet, byte[] publicKey, out long bodyLength)
+        {
+            string raw = Packet.Serialize(packet);
+            byte[] encoded;
+            if (publicKey != null)
+            {
+                encoded = Crypto.Encrypt(raw, publicKey);
+            } else
+            {
+                encoded = Encoding.Unicode.GetBytes(raw);
+            }
+            int length = encoded.Length;
+            if (publicKey != null) length *= -1;
+            bodyLength = Math.Abs(length);
+            return BitConverter.GetBytes(length).Concat(encoded).ToArray();
+        }
+    }
+
     public class AuthenticationProvider
     {
         public readonly Guid uid;
@@ -243,12 +283,49 @@ namespace QuatschAndSuch.Authentication
     }
 
     [Serializable]
+    public class AuthServerClient : ClientInfo
+    {
+        public Service authorizedServices;
+        public string password;
+
+        public string token;
+        public DateTime validUntil = DateTime.UnixEpoch;
+        public DateTime tokenIssued = DateTime.UnixEpoch;
+
+        public AuthServerClient(string name, string handle, byte[] key, Service authorizedServices, string password) : base(name, handle, key)
+        {
+            this.authorizedServices = authorizedServices;
+            this.password = password;
+        }
+
+        public AuthServerClient(ClientInfo basis) : base(basis.Name, basis.Handle, basis.key)
+        {
+            this.authorizedServices = Service.None;
+            this.password = null;
+        }
+
+        public byte[] GetTokenHash()
+        {
+            if (token != "")
+            {
+                return SHA256.HashData(Encoding.Unicode.GetBytes($"{Handle}: {token} [{tokenIssued:yyyy-MM-dd HH-mm-ss}]"));
+            }
+            return null;
+        }
+
+        public byte[] TokenHash => GetTokenHash();
+
+        public bool Registered => password != null;
+    }
+
+    [Serializable, Table("Providers")]
     public class ProviderInfo
     {
-        public readonly Guid uid;
+        [Key] public readonly Guid uid;
         public readonly Service service;
-        public readonly byte[] key;
+        public byte[] key;
         public DateTime runout = DateTime.UtcNow;
+        public readonly string secret = null;
 
         public ProviderInfo(Guid uid, Service service, byte[] key)
         {
@@ -260,5 +337,20 @@ namespace QuatschAndSuch.Authentication
         public ProviderInfo(AuthenticationProvider source) : this(source.uid, source.service, source.publicKey) {}
 
         public bool Valid => runout > DateTime.UtcNow;
+        public bool Official => secret != null;
     }
+
+    [Serializable, Packet(Authentication.AuthPacketPrefix | 0)]
+    public class ProviderPacket : Packet
+    {
+        public readonly ProviderInfo info;
+        public readonly bool seekingValidation;
+
+        public ProviderPacket(ProviderInfo info, bool seekingValidation)
+        {
+            this.info = info;
+            this.seekingValidation = seekingValidation;
+        }
+    }
+
 }
