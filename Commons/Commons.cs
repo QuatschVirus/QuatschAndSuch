@@ -176,8 +176,14 @@ namespace QuatschAndSuch
             });
         }
 
+        /// <summary>
+        /// The id of the thread this Packet belongs to
+        /// </summary>
         public int ThreadId;
-        public uint Index;
+        /// <summary>
+        /// The zero-based index of where in the thread the packet is (the fist packet has index 0, the second one index 1 and so on)
+        /// </summary>
+        public uint Index { get; set; }
 
         public void MakeResponse(Packet response)
         {
@@ -394,7 +400,7 @@ namespace QuatschAndSuch
         /// <param name="path">The path to get the information from</param>
         /// <param name="password">The password to use for PKCS#8. Make sure to handle this securely!</param>
         /// <returns>CSP blob for the decoded private key</returns>
-        /// <exception cref="PasswordHashMismatchException"Thrown if the password does not fit the stored password information</exception>
+        /// <exception cref="PasswordHashMismatchException">Thrown if the password does not fit the stored password information</exception>
         public static byte[] RetrieveKey(string path, string password)
         {
             return RetrieveKey(path, 0, password, out var _);
