@@ -26,7 +26,6 @@ namespace QuatschAndSuch.Authentication.Server
     public class AuthServer
     {
         const string url = "http://*:5000";
-        const string providerFilePath = "./providers.dat";
 
         public static readonly TimeSpan validationLife = TimeSpan.FromMinutes(60);
 
@@ -40,9 +39,6 @@ namespace QuatschAndSuch.Authentication.Server
         {
             FallbackHandler = (p, t) => (new BasicPacket(BasicPacket.BasicValue.Invalid, ""), null),
         };
-
-        readonly Dictionary<Guid, ProviderInfo> providers = new();
-
 
         public static void Main(string[] args)
         {
