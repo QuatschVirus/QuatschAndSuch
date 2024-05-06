@@ -19,6 +19,7 @@ Open to suggestions!
 
 ## Contributions
 If you have an idea or a suggestions, feel free! This is open source for a reason. Just make sure to follow the set-out conventions (I'll maybe make an effort to actually define them, for now, just have a look at the code).
-I'd be especially grateful for advice or help with databases and secure storage and commuciations, becasue this is my first ever encounter with actaul database systems (SQLite), and my first serious use of encrypted communications
+I'd be especially grateful for advice or help with databases and secure storage and commuciations, becasue this is my first ever encounter with actaul database systems (SQLite), and my first serious use of encrypted communications.
+You can find the associated project [here](https://github.com/users/QuatschVirus/projects/3).
 ### Contribution Attribution
 ...
