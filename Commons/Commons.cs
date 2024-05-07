@@ -10,6 +10,9 @@ using System.Text.Json;
 
 namespace QuatschAndSuch
 {
+    /// <summary>
+    /// Used to define a packet
+    /// </summary>
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
     public class PacketAttribute : Attribute
     {
