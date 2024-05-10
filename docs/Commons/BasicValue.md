@@ -1,0 +1,31 @@
+# public BasicValue (Enum)
+`QuatschAndSuch.BasicPacket.BasicValue`  
+
+The values a BasicPacket can have
+
+
+## Values
+
+### Ping
+Just a simple ping
+
+
+### Acknowledge
+General acknowledgement / positive answer
+
+
+### NonAcknowledge
+General non-acknowledgement / negative answer
+
+
+### Repeat
+Repeat the last packet
+
+
+### Close
+Close the connection
+
+
+### Invalid
+Invalid request was recieved
+

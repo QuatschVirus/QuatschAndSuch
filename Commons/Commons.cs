@@ -201,8 +201,15 @@ namespace QuatschAndSuch
         public readonly BasicValue value;
         public readonly string reason;
 
+        /// <summary>
+        /// The values a BasicPacket can have
+        /// </summary>
+        /// <kind>enum</kind>
         public enum BasicValue
         {
+            /// <summary>
+            /// Just a simple ping
+            /// </summary>
             Ping,
             /// <summary>
             /// General acknowledgement / positive answer
