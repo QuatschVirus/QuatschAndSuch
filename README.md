@@ -1,9 +1,11 @@
 # QuatschAndSuch
+[![Documentation Status](https://readthedocs.org/projects/quatschandsuch/badge/?version=latest)](https://quatschandsuch.readthedocs.io/en/latest/?badge=latest)  
 QuatschAndSuch is an environment, primarily designed towards commucation services/apps. In includes a central authentification system using tokens, and all the necessary requirements to easily integrate custom services.
 
 The name is (rather obviously I think) rooted in my commom username "QuastchVirus", with Quatschen being german for "Talking nonsense" (or, more colloquially, "Yapping). Y'know, because it's for talking to (most of the time) people.
 
-For more information on the individual services, check out their respective folders. 
+For more information on the individual services, check out their respective folders.  
+For information about how to work with the code base, see the documentation [here](https://quatschandsuch.readthedocs.io/en/latest/)
 
 ## The architecture
 Currently, all "services" are seperate from another, but can be combined to form a single app. For example, one could combine the Direct Message service ([Slider](https://github.com/QuatschVirus/QuatschAndSuch/tree/main/Slider)) with the (not yet existing) Group Chat service to create essentially a "normal" chat app similar to WhatsApp or the likes. You can aso just make a custom service that is interoparable with the existing systems.
