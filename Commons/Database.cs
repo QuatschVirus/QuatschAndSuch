@@ -13,8 +13,13 @@ using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
-namespace Commons.Database
+namespace QuatschAndSuch.Database
 {
+    /// <summary>
+    /// A construct for adding basic database functionality.
+    /// Extend this class to create a Database model, and add a <see cref="DbSet{TEntity}">DbSet</see> for each table.
+    /// Now just correctly define the type you want to make a table for using Attributes or the Fluent API
+    /// </summary>
     public abstract class Database : DbContext
     {
         readonly string source;

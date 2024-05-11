@@ -1,8 +1,11 @@
 site_name: QuatschAndSuch
-repo_url: https://github.com/QuatschVirus/QuatschAndSuch
+repo_url: https://github.com/QuatschVirus/QuatschAndSuch#
+repo_name: QuatschAndSuch
 
 theme:
   name: material
+  icon:
+    repo: fontawesome/brands/github
   palette:
     - media: "(prefers-color-scheme)"
       toggle:

@@ -1,17 +1,4 @@
-# Welcome to MkDocs
-
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
-
-## Commands
-
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
-
-## Project layout
-
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+# The QuatschAndSuch Wiki
+This is the official documentation for QuatschAndSuch, both for implementing and modifying the services. The documentations are grouped by Service and mostly automatically generated. They should also reflect in the docuemntation information in the actual code using XML comments.
+## Contributing documentation
+Since the documentation is derived from the code comments using [DocsGenerator](https://github.com/QuatschVirus/DocsGenerator), to change the documentation, edit the offending comments in the source code, build the XML file, and run the tool for the entire assembly. For information about the tool, have a look at the DocsGenerator repository.
