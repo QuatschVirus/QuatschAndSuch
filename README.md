@@ -1,8 +1,8 @@
 # QuatschAndSuch
 [![Documentation Status](https://readthedocs.org/projects/quatschandsuch/badge/?version=latest)](https://quatschandsuch.readthedocs.io/en/latest/?badge=latest)  
-QuatschAndSuch is an environment, primarily designed towards commucation services/apps. In includes a central authentification system using tokens, and all the necessary requirements to easily integrate custom services.
+QuatschAndSuch is an environment, primarily designed towards communication services/apps. In includes a central authentication system using tokens, and all the necessary requirements to easily integrate custom services.
 
-The name is (rather obviously I think) rooted in my commom username "QuastchVirus", with Quatschen being german for "Talking nonsense" (or, more colloquially, "Yapping). Y'know, because it's for talking to (most of the time) people.
+The name is (rather obviously I think) rooted in my common username "QuastchVirus", with Quatschen being german for "Talking nonsense" (or, more colloquially, "Yapping). Y'know, because it's for talking to (most of the time) people.
 
 For more information on the individual services, check out their respective folders.  
 For information about how to work with the code base, see the documentation [here](https://quatschandsuch.readthedocs.io/en/latest/)
@@ -21,7 +21,7 @@ Open to suggestions!
 
 ## Contributions
 If you have an idea or a suggestions, feel free! This is open source for a reason. Just make sure to follow the set-out conventions (I'll maybe make an effort to actually define them, for now, just have a look at the code).
-I'd be especially grateful for advice or help with databases and secure storage and commuciations, becasue this is my first ever encounter with actaul database systems (SQLite), and my first serious use of encrypted communications.
+I'd be especially grateful for advice or help with databases and secure storage and communiciations, because this is my first ever encounter with actual database systems (SQLite), and my first serious use of encrypted communications and storage.
 You can find the associated project [here](https://github.com/users/QuatschVirus/projects/3).
 ### Contribution Attribution
 ...

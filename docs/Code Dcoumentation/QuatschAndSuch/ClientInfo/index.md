@@ -1,9 +1,8 @@
----
-title: ClientInfo
----
-# public ClientInfo (Class)
-`QuatschAndSuch.ClientInfo`  
+# ClientInfo
+*public class ClientInfo*  
+*QuatschAndSuch.ClientInfo*
 
+## Summary
 Gives information on the client, to keep track of them.
 
 

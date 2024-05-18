@@ -1,9 +1,8 @@
----
-title: ServerInfo
----
-# public ServerInfo (Class)
-`QuatschAndSuch.ServerInfo`  
+# ServerInfo
+*public class ServerInfo*  
+*QuatschAndSuch.ServerInfo*
 
+## Summary
 Gives information for connecting to servers. These servers are simply there as the link for the parties to communicate over. The messages stay encrypted the whole time
 
 

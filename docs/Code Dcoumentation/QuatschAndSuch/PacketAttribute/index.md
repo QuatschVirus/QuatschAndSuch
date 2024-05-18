@@ -1,9 +1,8 @@
----
-title: PacketAttribute
----
-# public PacketAttribute (Class)
-`QuatschAndSuch.PacketAttribute`  
+# PacketAttribute
+*public class PacketAttribute : Attribute*  
+*QuatschAndSuch.PacketAttribute*
 
+## Summary
 Used to define a packet
 
 
